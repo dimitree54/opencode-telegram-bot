@@ -9,6 +9,24 @@ interface InternalProject extends ProjectInfo {
   lastUpdated: number;
 }
 
+interface ProjectApiShape {
+  id: string;
+  worktree: string;
+  name?: string;
+  time?: {
+    updated?: number;
+  };
+}
+
+function toInternalProject(project: ProjectApiShape): InternalProject {
+  return {
+    id: project.id,
+    worktree: project.worktree,
+    name: project.name || project.worktree,
+    lastUpdated: project.time?.updated ?? 0,
+  };
+}
+
 async function isLinkedGitWorktree(worktree: string): Promise<boolean> {
   if (worktree === "/") {
     return false;
@@ -44,6 +62,20 @@ function worktreeKey(worktree: string): string {
   return worktree;
 }
 
+function getConfiguredDefaultProject(): InternalProject | null {
+  const worktree = (process.env.OPENCODE_DEFAULT_PROJECT_PATH || "").trim();
+  if (!worktree) {
+    return null;
+  }
+
+  return {
+    id: `default:${worktree}`,
+    worktree,
+    name: (process.env.OPENCODE_DEFAULT_PROJECT_NAME || "").trim() || worktree,
+    lastUpdated: Number.MAX_SAFE_INTEGER,
+  };
+}
+
 export async function getProjects(): Promise<ProjectInfo[]> {
   const { data: projects, error } = await opencodeClient.project.list();
 
@@ -51,18 +83,36 @@ export async function getProjects(): Promise<ProjectInfo[]> {
     throw error || new Error("No data received from server");
   }
 
-  const apiProjects: InternalProject[] = projects.map((project) => ({
-    id: project.id,
-    worktree: project.worktree,
-    name: project.name || project.worktree,
-    lastUpdated: project.time?.updated ?? 0,
-  }));
+  let currentProject: InternalProject | null = null;
+
+  try {
+    const { data } = await opencodeClient.project.current();
+    if (data) {
+      currentProject = toInternalProject(data as ProjectApiShape);
+    }
+  } catch (currentProjectError) {
+    logger.debug("[ProjectManager] Failed to load current project", currentProjectError);
+  }
+
+  const apiProjects: InternalProject[] = projects.map((project) => toInternalProject(project));
 
   const cachedProjects = await getCachedSessionProjects();
   const mergedByWorktree = new Map<string, InternalProject>();
 
   for (const apiProject of apiProjects) {
     mergedByWorktree.set(worktreeKey(apiProject.worktree), apiProject);
+  }
+
+  if (currentProject) {
+    mergedByWorktree.set(worktreeKey(currentProject.worktree), currentProject);
+  }
+
+  const configuredDefaultProject = getConfiguredDefaultProject();
+  if (configuredDefaultProject) {
+    const key = worktreeKey(configuredDefaultProject.worktree);
+    if (!mergedByWorktree.has(key)) {
+      mergedByWorktree.set(key, configuredDefaultProject);
+    }
   }
 
   for (const cachedProject of cachedProjects) {
@@ -96,7 +146,7 @@ export async function getProjects(): Promise<ProjectInfo[]> {
   const hiddenLinkedWorktrees = projectList.length - visibleProjects.length;
 
   logger.debug(
-    `[ProjectManager] Projects resolved: api=${projects.length}, cached=${cachedProjects.length}, hiddenLinkedWorktrees=${hiddenLinkedWorktrees}, total=${visibleProjects.length}`,
+    `[ProjectManager] Projects resolved: api=${projects.length}, cached=${cachedProjects.length}, current=${currentProject ? 1 : 0}, configuredDefault=${configuredDefaultProject ? 1 : 0}, hiddenLinkedWorktrees=${hiddenLinkedWorktrees}, total=${visibleProjects.length}`,
   );
 
   return visibleProjects.map(({ id, worktree, name }) => ({ id, worktree, name }));

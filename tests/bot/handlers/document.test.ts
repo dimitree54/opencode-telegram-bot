@@ -176,6 +176,24 @@ describe("bot/handlers/document", () => {
       expect(replyMock).toHaveBeenCalledWith(t("bot.file_downloading"));
       expect(processPromptMock).toHaveBeenCalled();
     });
+
+    it("treats known text filenames as text even with generic MIME type", async () => {
+      const { ctx, replyMock } = createDocumentContext({
+        document: {
+          file_id: "doc-file-id",
+          file_unique_id: "unique-id",
+          file_name: "app.ts",
+          mime_type: "application/octet-stream",
+          file_size: 500,
+        },
+      });
+      const { deps, processPromptMock } = createDocumentDeps();
+
+      await handleDocumentMessage(ctx, deps);
+
+      expect(replyMock).toHaveBeenCalledWith(t("bot.file_downloading"));
+      expect(processPromptMock).toHaveBeenCalled();
+    });
   });
 
   describe("PDF files", () => {
@@ -228,7 +246,7 @@ describe("bot/handlers/document", () => {
     });
 
     it("sends caption-only when model does not support PDF but caption exists", async () => {
-      const { ctx, replyMock } = createDocumentContext({
+      const { ctx } = createDocumentContext({
         document: {
           file_id: "pdf-file-id",
           file_unique_id: "pdf-unique-id",
@@ -251,7 +269,7 @@ describe("bot/handlers/document", () => {
   });
 
   describe("unsupported file types", () => {
-    it("ignores unsupported MIME types silently", async () => {
+    it("reports unsupported attachments when the model cannot accept them", async () => {
       const { ctx, replyMock } = createDocumentContext({
         document: {
           file_id: "zip-file-id",
@@ -265,12 +283,12 @@ describe("bot/handlers/document", () => {
 
       await handleDocumentMessage(ctx, deps);
 
-      expect(replyMock).not.toHaveBeenCalled();
+      expect(replyMock).toHaveBeenCalledWith(t("bot.model_no_attachment"));
       expect(downloadMock).not.toHaveBeenCalled();
       expect(processPromptMock).not.toHaveBeenCalled();
     });
 
-    it("ignores image files", async () => {
+    it("sends image documents when the model supports image input", async () => {
       const { ctx, replyMock } = createDocumentContext({
         document: {
           file_id: "image-file-id",
@@ -280,12 +298,51 @@ describe("bot/handlers/document", () => {
           file_size: 5000,
         },
       });
-      const { deps, processPromptMock } = createDocumentDeps();
+      const { deps, processPromptMock, downloadMock } = createDocumentDeps();
 
       await handleDocumentMessage(ctx, deps);
 
-      expect(replyMock).not.toHaveBeenCalled();
-      expect(processPromptMock).not.toHaveBeenCalled();
+      expect(replyMock).toHaveBeenCalledWith(t("bot.file_downloading"));
+      expect(downloadMock).toHaveBeenCalled();
+      expect(processPromptMock).toHaveBeenCalledWith(
+        ctx,
+        "",
+        deps,
+        expect.arrayContaining([
+          expect.objectContaining({ type: "file", mime: "image/png", filename: "photo.png" }),
+        ]),
+      );
+    });
+
+    it("sends arbitrary documents when the model supports generic attachments", async () => {
+      const { ctx, replyMock } = createDocumentContext({
+        document: {
+          file_id: "zip-file-id",
+          file_unique_id: "zip-unique-id",
+          file_name: "bundle.zip",
+          mime_type: "application/zip",
+          file_size: 5000,
+        },
+      });
+      const { deps, processPromptMock, downloadMock } = createDocumentDeps({
+        getModelCapabilities: vi.fn().mockResolvedValue({
+          input: { pdf: false, image: false, audio: false, video: false },
+          attachment: true,
+        }),
+      });
+
+      await handleDocumentMessage(ctx, deps);
+
+      expect(replyMock).toHaveBeenCalledWith(t("bot.file_downloading"));
+      expect(downloadMock).toHaveBeenCalled();
+      expect(processPromptMock).toHaveBeenCalledWith(
+        ctx,
+        "",
+        deps,
+        expect.arrayContaining([
+          expect.objectContaining({ type: "file", mime: "application/zip", filename: "bundle.zip" }),
+        ]),
+      );
     });
   });
 

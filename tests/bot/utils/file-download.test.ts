@@ -3,6 +3,7 @@ import {
   toDataUri,
   formatFileSize,
   isFileSizeAllowed,
+  isLikelyTextFilename,
   isTextMimeType,
 } from "../../../src/bot/utils/file-download.js";
 
@@ -105,6 +106,22 @@ describe("bot/utils/file-download", () => {
 
     it("returns false for empty string", () => {
       expect(isTextMimeType("")).toBe(false);
+    });
+  });
+
+  describe("isLikelyTextFilename", () => {
+    it("returns true for common text file extensions and names", () => {
+      expect(isLikelyTextFilename("script.ts")).toBe(true);
+      expect(isLikelyTextFilename("notes.md")).toBe(true);
+      expect(isLikelyTextFilename("config.yaml")).toBe(true);
+      expect(isLikelyTextFilename("Dockerfile")).toBe(true);
+      expect(isLikelyTextFilename(".gitignore")).toBe(true);
+    });
+
+    it("returns false for likely binary filenames", () => {
+      expect(isLikelyTextFilename("archive.zip")).toBe(false);
+      expect(isLikelyTextFilename("photo.png")).toBe(false);
+      expect(isLikelyTextFilename(undefined)).toBe(false);
     });
   });
 });

@@ -59,6 +59,10 @@ import { t } from "../i18n/index.js";
 import { processUserPrompt } from "./handlers/prompt.js";
 import { handleVoiceMessage } from "./handlers/voice.js";
 import { handleDocumentMessage } from "./handlers/document.js";
+import {
+  extractTelegramFileDirectives,
+  resolveTelegramFileDirectivePath,
+} from "./utils/telegram-file-directives.js";
 import { downloadTelegramFile, toDataUri } from "./utils/file-download.js";
 import { sendBotText } from "./utils/telegram-text.js";
 import { getModelCapabilities, supportsInput } from "../model/capabilities.js";
@@ -72,6 +76,7 @@ let chatIdInstance: number | null = null;
 let commandsInitialized = false;
 
 const TELEGRAM_DOCUMENT_CAPTION_MAX_LENGTH = 1024;
+const TELEGRAM_REQUESTED_FILE_MAX_BYTES = 20 * 1024 * 1024;
 const SESSION_RETRY_PREFIX = "🔁";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,6 +93,53 @@ function prepareDocumentCaption(caption: string): string {
   }
 
   return `${normalizedCaption.slice(0, TELEGRAM_DOCUMENT_CAPTION_MAX_LENGTH - 3)}...`;
+}
+
+async function sendRequestedTelegramFiles(
+  sessionDirectory: string,
+  messageText: string,
+): Promise<string[]> {
+  if (!botInstance || !chatIdInstance) {
+    return [];
+  }
+
+  const { directives } = extractTelegramFileDirectives(messageText);
+  if (directives.length === 0) {
+    return [];
+  }
+
+  const failures: string[] = [];
+
+  for (const directive of directives) {
+    const resolvedPath = resolveTelegramFileDirectivePath(sessionDirectory, directive.requestedPath);
+    if (!resolvedPath) {
+      failures.push(`- ${directive.requestedPath}: outside current project`);
+      continue;
+    }
+
+    try {
+      const fileStat = await fs.stat(resolvedPath);
+      if (!fileStat.isFile()) {
+        failures.push(`- ${directive.requestedPath}: not a regular file`);
+        continue;
+      }
+
+      if (fileStat.size > TELEGRAM_REQUESTED_FILE_MAX_BYTES) {
+        failures.push(`- ${directive.requestedPath}: larger than 20MB`);
+        continue;
+      }
+
+      await botInstance.api.sendDocument(chatIdInstance, new InputFile(resolvedPath), {
+        caption: prepareDocumentCaption(directive.caption || path.basename(resolvedPath)),
+        disable_notification: true,
+      });
+    } catch (error) {
+      logger.error(`[Bot] Failed to send requested Telegram file: ${directive.requestedPath}`, error);
+      failures.push(`- ${directive.requestedPath}: send failed`);
+    }
+  }
+
+  return failures;
 }
 
 const toolMessageBatcher = new ToolMessageBatcher({
@@ -193,7 +245,8 @@ async function ensureEventSubscription(directory: string): Promise<void> {
     await toolMessageBatcher.flushSession(sessionId, "assistant_message_completed");
 
     try {
-      const parts = formatSummary(messageText);
+      const { cleanedText } = extractTelegramFileDirectives(messageText);
+      const parts = formatSummary(cleanedText);
       const assistantParseMode = getAssistantParseMode();
       const assistantMessageFormat = assistantParseMode === "MarkdownV2" ? "markdown_v2" : "raw";
 
@@ -201,19 +254,32 @@ async function ensureEventSubscription(directory: string): Promise<void> {
         `[Bot] Sending completed message to Telegram (chatId=${chatIdInstance}, parts=${parts.length})`,
       );
 
-      for (let i = 0; i < parts.length; i++) {
-        const isLastPart = i === parts.length - 1;
-        const keyboard =
-          isLastPart && keyboardManager.isInitialized() ? keyboardManager.getKeyboard() : undefined;
-        const options = keyboard ? { reply_markup: keyboard } : undefined;
+      if (parts.length > 0) {
+        for (let i = 0; i < parts.length; i++) {
+          const isLastPart = i === parts.length - 1;
+          const keyboard =
+            isLastPart && keyboardManager.isInitialized() ? keyboardManager.getKeyboard() : undefined;
+          const options = keyboard ? { reply_markup: keyboard } : undefined;
 
-        await sendBotText({
-          api: botInstance.api,
-          chatId: chatIdInstance,
-          text: parts[i],
-          options,
-          format: assistantMessageFormat,
-        });
+          await sendBotText({
+            api: botInstance.api,
+            chatId: chatIdInstance,
+            text: parts[i],
+            options,
+            format: assistantMessageFormat,
+          });
+        }
+      }
+
+      const fileSendFailures = await sendRequestedTelegramFiles(currentSession.directory, messageText);
+      if (fileSendFailures.length > 0) {
+        await botInstance.api.sendMessage(
+          chatIdInstance,
+          t("bot.file_send_failed", { details: fileSendFailures.join("\n") }),
+          {
+            disable_notification: true,
+          },
+        );
       }
     } catch (err) {
       logger.error("Failed to send message to Telegram:", err);
@@ -576,8 +642,6 @@ export function createBot(): Bot<Context> {
   bot.command("start", startCommand);
   bot.command("help", helpCommand);
   bot.command("status", statusCommand);
-  bot.command("opencode_start", opencodeStartCommand);
-  bot.command("opencode_stop", opencodeStopCommand);
   bot.command("projects", projectsCommand);
   bot.command("sessions", sessionsCommand);
   bot.command("new", newCommand);
@@ -586,6 +650,11 @@ export function createBot(): Bot<Context> {
   bot.command("tasklist", taskListCommand);
   bot.command("rename", renameCommand);
   bot.command("commands", commandsCommand);
+
+  if (!config.opencode.managedExternally) {
+    bot.command("opencode_start", opencodeStartCommand);
+    bot.command("opencode_stop", opencodeStopCommand);
+  }
 
   bot.on("message:text", unknownCommandMiddleware);
 

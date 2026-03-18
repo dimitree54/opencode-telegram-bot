@@ -3,8 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { projectListMock, cachedSessionProjectsMock } = vi.hoisted(() => ({
+const { projectListMock, projectCurrentMock, cachedSessionProjectsMock } = vi.hoisted(() => ({
   projectListMock: vi.fn(),
+  projectCurrentMock: vi.fn(),
   cachedSessionProjectsMock: vi.fn(),
 }));
 
@@ -12,6 +13,7 @@ vi.mock("../../src/opencode/client.js", () => ({
   opencodeClient: {
     project: {
       list: projectListMock,
+      current: projectCurrentMock,
     },
   },
 }));
@@ -28,7 +30,9 @@ describe("project/manager", () => {
 
   beforeEach(() => {
     projectListMock.mockReset();
+    projectCurrentMock.mockReset();
     cachedSessionProjectsMock.mockReset();
+    projectCurrentMock.mockResolvedValue({ data: null, error: null });
   });
 
   afterEach(async () => {
@@ -97,5 +101,40 @@ describe("project/manager", () => {
     const projects = await getProjects();
 
     expect(projects).toEqual([{ id: "main", worktree: mainWorktree, name: "Main" }]);
+  });
+
+  it("includes current project even when the list endpoint is empty", async () => {
+    projectListMock.mockResolvedValueOnce({
+      data: [],
+      error: null,
+    });
+    projectCurrentMock.mockResolvedValueOnce({
+      data: { id: "current", worktree: "/workspace/openclaw", name: "openclaw" },
+      error: null,
+    });
+    cachedSessionProjectsMock.mockResolvedValueOnce([]);
+
+    const projects = await getProjects();
+
+    expect(projects).toEqual([
+      { id: "current", worktree: "/workspace/openclaw", name: "openclaw" },
+    ]);
+  });
+
+  it("includes configured default project when API does not know it yet", async () => {
+    vi.stubEnv("OPENCODE_DEFAULT_PROJECT_PATH", "/workspace/openclaw");
+    vi.stubEnv("OPENCODE_DEFAULT_PROJECT_NAME", "openclaw");
+
+    projectListMock.mockResolvedValueOnce({
+      data: [],
+      error: null,
+    });
+    cachedSessionProjectsMock.mockResolvedValueOnce([]);
+
+    const projects = await getProjects();
+
+    expect(projects).toEqual([
+      { id: "default:/workspace/openclaw", worktree: "/workspace/openclaw", name: "openclaw" },
+    ]);
   });
 });

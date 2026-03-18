@@ -77,7 +77,10 @@ export const en = {
   "bot.file_downloading": "⏳ Downloading file...",
   "bot.file_too_large": "⚠️ File is too large (max {maxSizeMb}MB)",
   "bot.file_download_error": "🔴 Failed to download file",
+  "bot.file_send_failed": "⚠️ Some requested Telegram files could not be sent:\n{details}",
   "bot.model_no_pdf": "⚠️ Current model doesn't support PDF input. Sending text only.",
+  "bot.model_no_attachment":
+    "⚠️ Current model doesn't support this file as an attachment. Sending text only if you included a caption.",
   "bot.text_file_too_large": "⚠️ Text file is too large (max {maxSizeKb}KB)",
 
   "status.header_running": "🟢 OpenCode Server is running",
@@ -100,6 +103,8 @@ export const en = {
   "status.session_hint": "Use /sessions to select one or /new to create one",
   "status.server_unavailable":
     "🔴 OpenCode Server is unavailable\n\nUse /opencode_start to start the server.",
+  "status.server_unavailable_external":
+    "🔴 OpenCode Server is unavailable\n\nThis setup expects the Docker-managed `opencode-server` service to be running. Check `docker compose logs opencode-server`.",
 
   "projects.empty":
     "📭 No projects found.\n\nOpen a directory in OpenCode and create at least one session, then it will appear here.",

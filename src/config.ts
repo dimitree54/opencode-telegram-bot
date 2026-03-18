@@ -103,6 +103,9 @@ export const config = {
     apiUrl: getEnvVar("OPENCODE_API_URL", false) || "http://localhost:4096",
     username: getEnvVar("OPENCODE_SERVER_USERNAME", false) || "opencode",
     password: getEnvVar("OPENCODE_SERVER_PASSWORD", false),
+    managedExternally: getOptionalBooleanEnvVar("OPENCODE_SERVER_MANAGED_EXTERNALLY", false),
+    defaultProjectPath: getEnvVar("OPENCODE_DEFAULT_PROJECT_PATH", false),
+    defaultProjectName: getEnvVar("OPENCODE_DEFAULT_PROJECT_NAME", false),
     model: {
       provider: getEnvVar("OPENCODE_MODEL_PROVIDER", true), // Required
       modelId: getEnvVar("OPENCODE_MODEL_ID", true), // Required

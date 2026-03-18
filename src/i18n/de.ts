@@ -83,7 +83,10 @@ export const de: I18nDictionary = {
   "bot.file_downloading": "⏳ Lade Datei herunter...",
   "bot.file_too_large": "⚠️ Datei ist zu groß (max. {maxSizeMb}MB)",
   "bot.file_download_error": "🔴 Datei konnte nicht heruntergeladen werden",
+  "bot.file_send_failed": "⚠️ Einige angeforderte Telegram-Dateien konnten nicht gesendet werden:\n{details}",
   "bot.model_no_pdf": "⚠️ Das aktuelle Modell unterstützt keine PDF-Eingabe. Sende nur Text.",
+  "bot.model_no_attachment":
+    "⚠️ Das aktuelle Modell unterstützt diese Datei nicht als Anhang. Es wird nur Text gesendet, falls eine Bildunterschrift vorhanden ist.",
   "bot.text_file_too_large": "⚠️ Textdatei ist zu groß (max. {maxSizeKb}KB)",
 
   "status.header_running": "🟢 OpenCode-Server läuft",
@@ -106,6 +109,8 @@ export const de: I18nDictionary = {
   "status.session_hint": "Nutze /sessions zur Auswahl oder /new zum Erstellen",
   "status.server_unavailable":
     "🔴 OpenCode-Server ist nicht verfügbar\n\nNutze /opencode_start, um den Server zu starten.",
+  "status.server_unavailable_external":
+    "🔴 OpenCode-Server ist nicht verfügbar\n\nDieses Setup erwartet, dass der Docker-Dienst `opencode-server` läuft. Prüfe `docker compose logs opencode-server`.",
 
   "projects.empty":
     "📭 Keine Projekte gefunden.\n\nÖffne ein Verzeichnis in OpenCode und erstelle mindestens eine Sitzung, dann erscheint es hier.",

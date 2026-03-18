@@ -35,7 +35,9 @@ export async function startBotApp(): Promise<void> {
   logger.debug(`[Runtime] Application start mode: ${mode}`);
 
   await loadSettings();
-  await processManager.initialize();
+  if (!config.opencode.managedExternally) {
+    await processManager.initialize();
+  }
   await reconcileStoredModelSelection();
   await warmupSessionDirectoryCache();
 

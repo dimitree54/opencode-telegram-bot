@@ -77,7 +77,10 @@ export const ru: I18nDictionary = {
   "bot.file_downloading": "⏳ Скачиваю файл...",
   "bot.file_too_large": "⚠️ Файл слишком большой (макс. {maxSizeMb}МБ)",
   "bot.file_download_error": "🔴 Не удалось скачать файл",
+  "bot.file_send_failed": "⚠️ Не удалось отправить некоторые запрошенные Telegram-файлы:\n{details}",
   "bot.model_no_pdf": "⚠️ Текущая модель не поддерживает PDF. Отправляю только текст.",
+  "bot.model_no_attachment":
+    "⚠️ Текущая модель не поддерживает этот файл как вложение. Будет отправлен только текст, если вы добавили подпись.",
   "bot.text_file_too_large": "⚠️ Текстовый файл слишком большой (макс. {maxSizeKb}КБ)",
 
   "status.header_running": "🟢 OpenCode Server запущен",
@@ -100,6 +103,8 @@ export const ru: I18nDictionary = {
   "status.session_hint": "Используйте /sessions для выбора или /new для создания",
   "status.server_unavailable":
     "🔴 OpenCode Server недоступен\n\nИспользуйте /opencode_start для запуска сервера.",
+  "status.server_unavailable_external":
+    "🔴 OpenCode Server недоступен\n\nВ этой конфигурации должен работать Docker-сервис `opencode-server`. Проверьте `docker compose logs opencode-server`.",
 
   "projects.empty":
     "📭 Проектов нет.\n\nОткройте директорию в OpenCode и создайте хотя бы одну сессию, после этого она появится здесь.",

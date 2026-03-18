@@ -1,4 +1,5 @@
 import { CommandContext, Context } from "grammy";
+import { config } from "../../config.js";
 import { opencodeClient } from "../../opencode/client.js";
 import { getCurrentSession } from "../../session/manager.js";
 import { getCurrentProject } from "../../settings/manager.js";
@@ -95,6 +96,12 @@ export async function statusCommand(ctx: CommandContext<Context>) {
     }
   } catch (error) {
     logger.error("[Bot] Error checking server status:", error);
-    await ctx.reply(t("status.server_unavailable"));
+    await ctx.reply(
+      t(
+        config.opencode.managedExternally
+          ? "status.server_unavailable_external"
+          : "status.server_unavailable",
+      ),
+    );
   }
 }

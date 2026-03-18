@@ -106,6 +106,48 @@ const APPLICATION_TEXT_MIME_TYPES = new Set([
   "application/sql",
 ]);
 
+const TEXT_FILE_EXTENSIONS = new Set([
+  ".c",
+  ".cc",
+  ".cfg",
+  ".conf",
+  ".cpp",
+  ".cs",
+  ".css",
+  ".csv",
+  ".env",
+  ".go",
+  ".h",
+  ".hpp",
+  ".html",
+  ".ini",
+  ".java",
+  ".js",
+  ".json",
+  ".jsx",
+  ".kt",
+  ".less",
+  ".log",
+  ".lua",
+  ".md",
+  ".php",
+  ".py",
+  ".rb",
+  ".rs",
+  ".scss",
+  ".sh",
+  ".sql",
+  ".svg",
+  ".swift",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".xml",
+  ".yaml",
+  ".yml",
+]);
+
 export function isTextMimeType(mimeType: string | undefined): boolean {
   if (!mimeType) {
     return false;
@@ -116,4 +158,26 @@ export function isTextMimeType(mimeType: string | undefined): boolean {
   }
 
   return APPLICATION_TEXT_MIME_TYPES.has(mimeType);
+}
+
+export function isLikelyTextFilename(filename: string | undefined): boolean {
+  if (!filename) {
+    return false;
+  }
+
+  const normalized = filename.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  if (["dockerfile", ".gitignore", ".npmrc", ".prettierrc", ".eslintrc"].includes(normalized)) {
+    return true;
+  }
+
+  const extensionIndex = normalized.lastIndexOf(".");
+  if (extensionIndex < 0) {
+    return false;
+  }
+
+  return TEXT_FILE_EXTENSIONS.has(normalized.slice(extensionIndex));
 }

@@ -4,10 +4,15 @@ import { processUserPrompt, type ProcessPromptDeps } from "./prompt.js";
 import {
   downloadTelegramFile,
   toDataUri,
+  isLikelyTextFilename,
   isTextMimeType,
   isFileSizeAllowed,
 } from "../utils/file-download.js";
-import { getModelCapabilities, supportsInput } from "../../model/capabilities.js";
+import {
+  getModelCapabilities,
+  supportsAttachment,
+  supportsInput,
+} from "../../model/capabilities.js";
 import { getStoredModel } from "../../model/manager.js";
 import { logger } from "../../utils/logger.js";
 import { t } from "../../i18n/index.js";
@@ -31,6 +36,33 @@ export interface DocumentHandlerDeps extends ProcessPromptDeps {
   ) => Promise<boolean>;
 }
 
+function canAttachDocument(
+  capabilities: Model["capabilities"] | null,
+  mimeType: string,
+): boolean {
+  if (!mimeType) {
+    return supportsAttachment(capabilities);
+  }
+
+  if (mimeType === "application/pdf") {
+    return supportsInput(capabilities, "pdf") || supportsAttachment(capabilities);
+  }
+
+  if (mimeType.startsWith("image/")) {
+    return supportsInput(capabilities, "image") || supportsAttachment(capabilities);
+  }
+
+  if (mimeType.startsWith("audio/")) {
+    return supportsInput(capabilities, "audio") || supportsAttachment(capabilities);
+  }
+
+  if (mimeType.startsWith("video/")) {
+    return supportsInput(capabilities, "video") || supportsAttachment(capabilities);
+  }
+
+  return supportsAttachment(capabilities);
+}
+
 export async function handleDocumentMessage(
   ctx: Context,
   deps: DocumentHandlerDeps,
@@ -50,7 +82,7 @@ export async function handleDocumentMessage(
   const filename = doc.file_name || "document";
 
   try {
-    if (isTextMimeType(mimeType)) {
+    if (isTextMimeType(mimeType) || isLikelyTextFilename(filename)) {
       if (!isFileSizeAllowed(doc.file_size, config.files.maxFileSizeKb)) {
         logger.warn(
           `[Document] Text file too large: ${filename} (${doc.file_size} bytes > ${config.files.maxFileSizeKb}KB)`,
@@ -76,43 +108,38 @@ export async function handleDocumentMessage(
       return;
     }
 
-    if (mimeType === "application/pdf") {
-      const storedModel = getStored();
-      const capabilities = await getCapabilities(storedModel.providerID, storedModel.modelID);
+    const storedModel = getStored();
+    const capabilities = await getCapabilities(storedModel.providerID, storedModel.modelID);
 
-      if (!supportsInput(capabilities, "pdf")) {
-        logger.warn(
-          `[Document] Model ${storedModel.providerID}/${storedModel.modelID} doesn't support PDF input`,
-        );
-        await ctx.reply(t("bot.model_no_pdf"));
-
-        if (caption.trim().length > 0) {
-          await processPrompt(ctx, caption, deps);
-        }
-        return;
-      }
-
-      await ctx.reply(t("bot.file_downloading"));
-      const downloadedFile = await downloadFile(ctx.api, doc.file_id);
-
-      const dataUri = toDataUri(downloadedFile.buffer, mimeType);
-
-      const filePart: FilePartInput = {
-        type: "file",
-        mime: mimeType,
-        filename: filename,
-        url: dataUri,
-      };
-
-      logger.info(
-        `[Document] Sending PDF (${downloadedFile.buffer.length} bytes, ${filename}) with prompt`,
+    if (!canAttachDocument(capabilities, mimeType)) {
+      logger.warn(
+        `[Document] Model ${storedModel.providerID}/${storedModel.modelID} doesn't support attachment type ${mimeType || "unknown"}`,
+      );
+      await ctx.reply(
+        mimeType === "application/pdf" ? t("bot.model_no_pdf") : t("bot.model_no_attachment"),
       );
 
-      await processPrompt(ctx, caption, deps, [filePart]);
+      if (caption.trim().length > 0) {
+        await processPrompt(ctx, caption, deps);
+      }
       return;
     }
 
-    logger.debug(`[Document] Unsupported document MIME type: ${mimeType}, ignoring`);
+    await ctx.reply(t("bot.file_downloading"));
+    const downloadedFile = await downloadFile(ctx.api, doc.file_id);
+
+    const filePart: FilePartInput = {
+      type: "file",
+      mime: mimeType || "application/octet-stream",
+      filename: filename,
+      url: toDataUri(downloadedFile.buffer, mimeType || "application/octet-stream"),
+    };
+
+    logger.info(
+      `[Document] Sending attachment (${downloadedFile.buffer.length} bytes, ${filename}, mime=${mimeType || "application/octet-stream"}) with prompt`,
+    );
+
+    await processPrompt(ctx, caption, deps, [filePart]);
   } catch (err) {
     logger.error("[Document] Error handling document message:", err);
     await ctx.reply(t("bot.file_download_error"));

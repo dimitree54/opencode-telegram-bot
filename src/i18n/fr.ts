@@ -83,8 +83,11 @@ export const fr: I18nDictionary = {
   "bot.file_downloading": "⏳ Téléchargement du fichier...",
   "bot.file_too_large": "⚠️ Le fichier est trop volumineux (max {maxSizeMb}MB)",
   "bot.file_download_error": "🔴 Impossible de télécharger le fichier",
+  "bot.file_send_failed": "⚠️ Certains fichiers Telegram demandés n'ont pas pu être envoyés :\n{details}",
   "bot.model_no_pdf":
     "⚠️ Le modèle actuel ne prend pas en charge les PDF. Envoi du texte uniquement.",
+  "bot.model_no_attachment":
+    "⚠️ Le modèle actuel ne prend pas en charge ce fichier en pièce jointe. Seul le texte sera envoyé si vous avez ajouté une légende.",
   "bot.text_file_too_large": "⚠️ Le fichier texte est trop volumineux (max {maxSizeKb}KB)",
 
   "status.header_running": "🟢 Le serveur OpenCode est en cours d'exécution",
@@ -107,6 +110,8 @@ export const fr: I18nDictionary = {
   "status.session_hint": "Utilisez /sessions pour en sélectionner une ou /new pour en créer une",
   "status.server_unavailable":
     "🔴 Le serveur OpenCode est indisponible\n\nUtilisez /opencode_start pour démarrer le serveur.",
+  "status.server_unavailable_external":
+    "🔴 Le serveur OpenCode est indisponible\n\nCette configuration attend que le service Docker `opencode-server` soit actif. Vérifiez `docker compose logs opencode-server`.",
 
   "projects.empty":
     "📭 Aucun projet trouvé.\n\nOuvrez un répertoire dans OpenCode et créez au moins une session, il apparaîtra ensuite ici.",

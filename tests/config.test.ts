@@ -125,4 +125,22 @@ describe("config boolean env parsing", () => {
 
     expect(config.bot.taskLimit).toBe(10);
   });
+
+  it("parses OPENCODE_SERVER_MANAGED_EXTERNALLY", async () => {
+    vi.stubEnv("OPENCODE_SERVER_MANAGED_EXTERNALLY", "true");
+
+    const config = await loadConfig();
+
+    expect(config.opencode.managedExternally).toBe(true);
+  });
+
+  it("reads default project path and name", async () => {
+    vi.stubEnv("OPENCODE_DEFAULT_PROJECT_PATH", "/workspace/openclaw");
+    vi.stubEnv("OPENCODE_DEFAULT_PROJECT_NAME", "openclaw");
+
+    const config = await loadConfig();
+
+    expect(config.opencode.defaultProjectPath).toBe("/workspace/openclaw");
+    expect(config.opencode.defaultProjectName).toBe("openclaw");
+  });
 });

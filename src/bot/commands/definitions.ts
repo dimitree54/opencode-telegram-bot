@@ -1,4 +1,5 @@
 import type { I18nKey } from "../../i18n/en.js";
+import { config } from "../../config.js";
 import { t } from "../../i18n/index.js";
 
 /**
@@ -35,8 +36,16 @@ const COMMAND_DEFINITIONS: BotCommandI18nDefinition[] = [
   { command: "help", descriptionKey: "cmd.description.help" },
 ];
 
+const EXTERNAL_SERVER_ONLY_COMMANDS = new Set(["opencode_start", "opencode_stop"]);
+
 export function getLocalizedBotCommands(): BotCommandDefinition[] {
-  return COMMAND_DEFINITIONS.map(({ command, descriptionKey }) => ({
+  return COMMAND_DEFINITIONS.filter(({ command }) => {
+    if (!config.opencode.managedExternally) {
+      return true;
+    }
+
+    return !EXTERNAL_SERVER_ONLY_COMMANDS.has(command);
+  }).map(({ command, descriptionKey }) => ({
     command,
     description: t(descriptionKey),
   }));

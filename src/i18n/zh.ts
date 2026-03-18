@@ -68,7 +68,10 @@ export const zh: I18nDictionary = {
   "bot.file_downloading": "⏳ 正在下载文件...",
   "bot.file_too_large": "⚠️ 文件过大（最大 {maxSizeMb}MB）",
   "bot.file_download_error": "🔴 下载文件失败",
+  "bot.file_send_failed": "⚠️ 部分请求发送到 Telegram 的文件未能发送：\n{details}",
   "bot.model_no_pdf": "⚠️ 当前模型不支持PDF输入。将仅发送文本。",
+  "bot.model_no_attachment":
+    "⚠️ 当前模型不支持将此文件作为附件处理。如果你提供了说明文字，则只会发送文本。",
   "bot.text_file_too_large": "⚠️ 文本文件过大（最大 {maxSizeKb}KB）",
 
   "status.header_running": "🟢 OpenCode 服务器正在运行",
@@ -90,6 +93,8 @@ export const zh: I18nDictionary = {
   "status.session_not_selected": "当前会话：未选择",
   "status.session_hint": "使用 /sessions 选择一个会话，或 /new 创建",
   "status.server_unavailable": "🔴 OpenCode 服务器不可用\n\n使用 /opencode_start 启动服务器。",
+  "status.server_unavailable_external":
+    "🔴 OpenCode 服务器不可用\n\n此配置要求 Docker 服务 `opencode-server` 正在运行。请检查 `docker compose logs opencode-server`。",
 
   "projects.empty":
     "📭 未找到项目。\n\n在 OpenCode 中打开一个目录并至少创建一个会话，然后它会出现在这里。",
