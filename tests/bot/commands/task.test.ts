@@ -31,6 +31,7 @@ vi.mock("../../../src/config.js", () => ({
     telegram: {
       token: "test-token",
       allowedUserId: 777,
+      allowedUserIds: [777],
       proxyUrl: "",
     },
     opencode: {

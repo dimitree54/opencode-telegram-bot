@@ -31,7 +31,7 @@ export async function startBotApp(): Promise<void> {
 
   logger.info(`Starting OpenCode Telegram Bot v${version}...`);
   logger.info(`Config loaded from ${runtimePaths.envFilePath}`);
-  logger.info(`Allowed User ID: ${config.telegram.allowedUserId}`);
+  logger.info(`Allowed User IDs: ${config.telegram.allowedUserIds.join(", ")}`);
   logger.debug(`[Runtime] Application start mode: ${mode}`);
 
   await loadSettings();

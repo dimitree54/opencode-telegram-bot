@@ -21,6 +21,7 @@ vi.mock("../../src/config.js", () => ({
   config: {
     telegram: {
       allowedUserId: 777,
+      allowedUserIds: [777],
     },
     opencode: {
       apiUrl: "http://localhost:4096",

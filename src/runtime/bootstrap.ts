@@ -53,6 +53,15 @@ function isPositiveInteger(value: string): boolean {
   return /^[1-9]\d*$/.test(value);
 }
 
+function isValidUserIdList(value: string): boolean {
+  const parts = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  return parts.length > 0 && parts.every((part) => isPositiveInteger(part));
+}
+
 function isValidHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
@@ -67,7 +76,7 @@ export function validateRuntimeEnvValues(values: Record<string, string>): EnvVal
     return { isValid: false, reason: "Missing TELEGRAM_BOT_TOKEN" };
   }
 
-  if (!isPositiveInteger(values.TELEGRAM_ALLOWED_USER_ID || "")) {
+  if (!isValidUserIdList(values.TELEGRAM_ALLOWED_USER_ID || "")) {
     return { isValid: false, reason: "Invalid TELEGRAM_ALLOWED_USER_ID" };
   }
 
@@ -315,7 +324,7 @@ async function askAllowedUserId(): Promise<string> {
   for (;;) {
     const allowedUserId = await askVisible(t("runtime.wizard.ask_user_id"));
 
-    if (!isPositiveInteger(allowedUserId)) {
+    if (!isValidUserIdList(allowedUserId)) {
       process.stdout.write(t("runtime.wizard.user_id_invalid"));
       continue;
     }

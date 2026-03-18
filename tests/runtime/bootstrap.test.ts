@@ -5,7 +5,7 @@ describe("runtime/bootstrap", () => {
   it("validates required runtime env values", () => {
     const result = validateRuntimeEnvValues({
       TELEGRAM_BOT_TOKEN: "123456:abcdef",
-      TELEGRAM_ALLOWED_USER_ID: "123456789",
+      TELEGRAM_ALLOWED_USER_ID: "123456789,987654321",
       OPENCODE_MODEL_PROVIDER: "opencode",
       OPENCODE_MODEL_ID: "big-pickle",
     });
@@ -26,7 +26,19 @@ describe("runtime/bootstrap", () => {
   it("fails validation for invalid user id", () => {
     const result = validateRuntimeEnvValues({
       TELEGRAM_BOT_TOKEN: "123456:abcdef",
-      TELEGRAM_ALLOWED_USER_ID: "0",
+      TELEGRAM_ALLOWED_USER_ID: "123456789,0",
+      OPENCODE_MODEL_PROVIDER: "opencode",
+      OPENCODE_MODEL_ID: "big-pickle",
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.reason).toContain("TELEGRAM_ALLOWED_USER_ID");
+  });
+
+  it("fails validation for empty comma-separated user id list", () => {
+    const result = validateRuntimeEnvValues({
+      TELEGRAM_BOT_TOKEN: "123456:abcdef",
+      TELEGRAM_ALLOWED_USER_ID: ", ,",
       OPENCODE_MODEL_PROVIDER: "opencode",
       OPENCODE_MODEL_ID: "big-pickle",
     });

@@ -73,7 +73,7 @@ import { scheduledTaskRuntime } from "../scheduled-task/runtime.js";
 
 let botInstance: Bot<Context> | null = null;
 let chatIdInstance: number | null = null;
-let commandsInitialized = false;
+const commandsInitializedChatIds = new Set<number>();
 
 const TELEGRAM_DOCUMENT_CAPTION_MAX_LENGTH = 1024;
 const TELEGRAM_REQUESTED_FILE_MAX_BYTES = 20 * 1024 * 1024;
@@ -189,13 +189,20 @@ const toolMessageBatcher = new ToolMessageBatcher({
 });
 
 async function ensureCommandsInitialized(ctx: Context, next: NextFunction): Promise<void> {
-  if (commandsInitialized || !ctx.from || ctx.from.id !== config.telegram.allowedUserId) {
+  const isAuthorizedUser = !!ctx.from && config.telegram.allowedUserIds.includes(ctx.from.id);
+
+  if (!isAuthorizedUser) {
     await next();
     return;
   }
 
   if (!ctx.chat) {
     logger.warn("[Bot] Cannot initialize commands: chat context is missing");
+    await next();
+    return;
+  }
+
+  if (commandsInitializedChatIds.has(ctx.chat.id)) {
     await next();
     return;
   }
@@ -208,7 +215,7 @@ async function ensureCommandsInitialized(ctx: Context, next: NextFunction): Prom
       },
     });
 
-    commandsInitialized = true;
+    commandsInitializedChatIds.add(ctx.chat.id);
     logger.debug(`[Bot] Commands initialized for authorized user (chat_id=${ctx.chat.id})`);
   } catch (err) {
     logger.error("[Bot] Failed to set commands:", err);

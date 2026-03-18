@@ -143,4 +143,13 @@ describe("config boolean env parsing", () => {
     expect(config.opencode.defaultProjectPath).toBe("/workspace/openclaw");
     expect(config.opencode.defaultProjectName).toBe("openclaw");
   });
+
+  it("parses multiple allowed Telegram user IDs", async () => {
+    vi.stubEnv("TELEGRAM_ALLOWED_USER_ID", "123456789, 987654321,123456789");
+
+    const config = await loadConfig();
+
+    expect(config.telegram.allowedUserId).toBe(123456789);
+    expect(config.telegram.allowedUserIds).toEqual([123456789, 987654321]);
+  });
 });

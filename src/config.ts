@@ -7,6 +7,25 @@ dotenv.config({ path: runtimePaths.envFilePath, quiet: true });
 
 export type MessageFormatMode = "raw" | "markdown";
 
+function parseAllowedTelegramUserIds(value: string): number[] {
+  const parsedIds = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .map((part) => Number.parseInt(part, 10));
+
+  if (
+    parsedIds.length === 0 ||
+    parsedIds.some((id) => Number.isNaN(id) || id <= 0)
+  ) {
+    throw new Error(
+      `Invalid TELEGRAM_ALLOWED_USER_ID value: expected one or more positive integers separated by commas (expected in ${runtimePaths.envFilePath})`,
+    );
+  }
+
+  return Array.from(new Set(parsedIds));
+}
+
 function getEnvVar(key: string, required: boolean = true): string {
   const value = process.env[key];
   if (required && !value) {
@@ -93,10 +112,13 @@ function getOptionalMessageFormatModeEnvVar(
   return defaultValue;
 }
 
+const allowedTelegramUserIds = parseAllowedTelegramUserIds(getEnvVar("TELEGRAM_ALLOWED_USER_ID"));
+
 export const config = {
   telegram: {
     token: getEnvVar("TELEGRAM_BOT_TOKEN"),
-    allowedUserId: parseInt(getEnvVar("TELEGRAM_ALLOWED_USER_ID"), 10),
+    allowedUserId: allowedTelegramUserIds[0],
+    allowedUserIds: allowedTelegramUserIds,
     proxyUrl: getEnvVar("TELEGRAM_PROXY_URL", false),
   },
   opencode: {
