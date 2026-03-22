@@ -52,6 +52,7 @@ import { formatSummary, formatToolInfo, getAssistantParseMode } from "../summary
 import { ToolMessageBatcher } from "../summary/tool-message-batcher.js";
 import { getCurrentSession } from "../session/manager.js";
 import { ingestSessionInfoForCache } from "../session/cache-manager.js";
+import { getCurrentProject } from "../settings/manager.js";
 import { logger } from "../utils/logger.js";
 import { safeBackgroundTask } from "../utils/safe-background-task.js";
 import { pinnedMessageManager } from "../pinned/manager.js";
@@ -63,7 +64,12 @@ import {
   extractTelegramFileDirectives,
   resolveTelegramFileDirectivePath,
 } from "./utils/telegram-file-directives.js";
-import { downloadTelegramFile, toDataUri } from "./utils/file-download.js";
+import {
+  buildTelegramAttachmentPrompt,
+  downloadTelegramFile,
+  saveTelegramFileToProject,
+  toDataUri,
+} from "./utils/file-download.js";
 import { sendBotText } from "./utils/telegram-text.js";
 import { getModelCapabilities, supportsInput } from "../model/capabilities.js";
 import { getStoredModel } from "../model/manager.js";
@@ -81,6 +87,19 @@ const SESSION_RETRY_PREFIX = "🔁";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TEMP_DIR = path.join(__dirname, "..", ".tmp");
+
+function resolveProjectRoot(): string | undefined {
+  return getCurrentProject()?.worktree || config.opencode.defaultProjectPath || undefined;
+}
+
+function getMessageDate(ctx: Context): Date {
+  const timestampSeconds = ctx.message?.date;
+  if (typeof timestampSeconds === "number") {
+    return new Date(timestampSeconds * 1000);
+  }
+
+  return new Date();
+}
 
 function prepareDocumentCaption(caption: string): string {
   const normalizedCaption = caption.trim();
@@ -851,6 +870,26 @@ export function createBot(): Bot<Context> {
       // Get the largest photo (last element in array)
       const largestPhoto = photos[photos.length - 1];
 
+      // Download photo and persist a local copy for agents
+      await ctx.reply(t("bot.photo_downloading"));
+      const downloadedFile = await downloadTelegramFile(ctx.api, largestPhoto.file_id);
+
+      const projectRoot = resolveProjectRoot();
+      const originalFilename = path.basename(downloadedFile.filePath) || "photo.jpg";
+      const savedFile = projectRoot
+        ? await saveTelegramFileToProject({
+            projectRoot,
+            buffer: downloadedFile.buffer,
+            originalFilename,
+            fallbackFilename: "photo.jpg",
+            mimeType: "image/jpeg",
+            createdAt: getMessageDate(ctx),
+          }).catch((error) => {
+            logger.warn("[Bot] Failed to save Telegram photo locally", error);
+            return undefined;
+          })
+        : undefined;
+
       // Check model capabilities
       const storedModel = getStoredModel();
       const capabilities = await getModelCapabilities(storedModel.providerID, storedModel.modelID);
@@ -866,14 +905,14 @@ export function createBot(): Bot<Context> {
           botInstance = bot;
           chatIdInstance = ctx.chat.id;
           const promptDeps = { bot, ensureEventSubscription };
-          await processUserPrompt(ctx, caption, promptDeps);
+          await processUserPrompt(
+            ctx,
+            buildTelegramAttachmentPrompt(caption, savedFile?.relativePath, ""),
+            promptDeps,
+          );
         }
         return;
       }
-
-      // Download photo
-      await ctx.reply(t("bot.photo_downloading"));
-      const downloadedFile = await downloadTelegramFile(ctx.api, largestPhoto.file_id);
 
       // Convert to data URI (Telegram always converts photos to JPEG)
       const dataUri = toDataUri(downloadedFile.buffer, "image/jpeg");
@@ -893,7 +932,16 @@ export function createBot(): Bot<Context> {
 
       // Send via processUserPrompt with file part
       const promptDeps = { bot, ensureEventSubscription };
-      await processUserPrompt(ctx, caption, promptDeps, [filePart]);
+      await processUserPrompt(
+        ctx,
+        buildTelegramAttachmentPrompt(
+          caption,
+          savedFile?.relativePath,
+          savedFile ? "" : "See attached file.",
+        ),
+        promptDeps,
+        [filePart],
+      );
     } catch (err) {
       logger.error("[Bot] Error handling photo message:", err);
       await ctx.reply(t("bot.photo_download_error"));

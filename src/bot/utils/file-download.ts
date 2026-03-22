@@ -1,14 +1,191 @@
+import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import type { Api } from "grammy";
 import { config } from "../../config.js";
 import { logger } from "../../utils/logger.js";
 
 const TELEGRAM_FILE_URL_BASE = "https://api.telegram.org/file/bot";
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB Telegram limit
+const TELEGRAM_DOCUMENTS_STORAGE_DIR = path.join("documents", "inbox");
+const TELEGRAM_FALLBACK_STORAGE_DIR = path.join(".telegram-files", "incoming");
 
 export interface DownloadedFile {
   buffer: Buffer;
   filePath: string;
   mimeType?: string;
+}
+
+export interface SavedTelegramFile {
+  absolutePath: string;
+  relativePath: string;
+  filename: string;
+}
+
+export interface SaveTelegramFileOptions {
+  projectRoot: string;
+  buffer: Buffer;
+  originalFilename?: string;
+  fallbackFilename: string;
+  mimeType?: string;
+  createdAt?: Date;
+}
+
+function formatTimestampPrefix(date: Date): string {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function buildDateSubdirectory(date: Date): string {
+  return path.join(
+    String(date.getUTCFullYear()),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  );
+}
+
+function sanitizeFilename(filename: string): string {
+  const basename = path.basename(filename).normalize("NFKC");
+  const sanitized = basename
+    .replace(/[\\/]/g, "-")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\.+/, "")
+    .replace(/[. ]+$/g, "");
+
+  return sanitized || "telegram-file";
+}
+
+function inferFileExtension(
+  originalFilename: string | undefined,
+  fallbackFilename: string,
+  mimeType: string | undefined,
+): string {
+  const originalExtension = originalFilename ? path.extname(originalFilename) : "";
+  if (originalExtension) {
+    return originalExtension;
+  }
+
+  const fallbackExtension = path.extname(fallbackFilename);
+  if (fallbackExtension) {
+    return fallbackExtension;
+  }
+
+  switch (mimeType) {
+    case "image/jpeg":
+      return ".jpg";
+    case "image/png":
+      return ".png";
+    case "image/webp":
+      return ".webp";
+    case "image/gif":
+      return ".gif";
+    case "application/pdf":
+      return ".pdf";
+    case "text/plain":
+      return ".txt";
+    default:
+      return "";
+  }
+}
+
+function buildStoredFilename(
+  originalFilename: string | undefined,
+  fallbackFilename: string,
+  mimeType: string | undefined,
+): string {
+  const sanitized = sanitizeFilename(originalFilename || fallbackFilename);
+  if (path.extname(sanitized)) {
+    return sanitized;
+  }
+
+  return `${sanitized}${inferFileExtension(originalFilename, fallbackFilename, mimeType)}`;
+}
+
+async function hasDocumentsDirectory(projectRoot: string): Promise<boolean> {
+  try {
+    const stats = await fs.stat(path.join(projectRoot, "documents"));
+    return stats.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+export async function saveTelegramFileToProject({
+  projectRoot,
+  buffer,
+  originalFilename,
+  fallbackFilename,
+  mimeType,
+  createdAt = new Date(),
+}: SaveTelegramFileOptions): Promise<SavedTelegramFile> {
+  const storageRoot = await hasDocumentsDirectory(projectRoot)
+    ? path.join(projectRoot, TELEGRAM_DOCUMENTS_STORAGE_DIR)
+    : path.join(projectRoot, TELEGRAM_FALLBACK_STORAGE_DIR);
+  const targetDir = path.join(storageRoot, buildDateSubdirectory(createdAt));
+  const storedFilename = buildStoredFilename(originalFilename, fallbackFilename, mimeType);
+  const uniqueFilename = `${formatTimestampPrefix(createdAt)}-${randomUUID().slice(0, 8)}-${storedFilename}`;
+  const absolutePath = path.join(targetDir, uniqueFilename);
+
+  await fs.mkdir(targetDir, { recursive: true });
+  await fs.writeFile(absolutePath, buffer);
+
+  const relativePath = path.relative(projectRoot, absolutePath).split(path.sep).join("/");
+  logger.info(`[FileDownload] Saved Telegram file locally: ${relativePath}`);
+
+  return {
+    absolutePath,
+    relativePath,
+    filename: uniqueFilename,
+  };
+}
+
+export function buildTelegramAttachmentPrompt(
+  caption: string,
+  savedRelativePath?: string,
+  fallbackInstruction: string = "See attached file.",
+): string {
+  const sections: string[] = [];
+
+  if (savedRelativePath) {
+    sections.push(
+      `Telegram file saved locally at \`${savedRelativePath}\`. Use this local path if you need the original file.`,
+    );
+  }
+
+  const trimmedCaption = caption.trim();
+  if (trimmedCaption) {
+    sections.push(trimmedCaption);
+  } else if (fallbackInstruction) {
+    sections.push(fallbackInstruction);
+  }
+
+  return sections.join("\n\n");
+}
+
+export function buildTextFilePrompt(
+  filename: string,
+  content: string,
+  caption: string,
+  savedRelativePath?: string,
+): string {
+  const sections: string[] = [];
+
+  if (savedRelativePath) {
+    sections.push(
+      `Telegram file saved locally at \`${savedRelativePath}\`. Use this local path if you need the original file.`,
+    );
+  }
+
+  sections.push(`--- Content of ${filename} ---\n${content}\n--- End of file ---`);
+
+  const trimmedCaption = caption.trim();
+  if (trimmedCaption) {
+    sections.push(trimmedCaption);
+  }
+
+  return sections.join("\n\n");
 }
 
 /**

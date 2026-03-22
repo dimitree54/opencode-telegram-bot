@@ -1,11 +1,34 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildTelegramAttachmentPrompt,
+  buildTextFilePrompt,
   toDataUri,
   formatFileSize,
   isFileSizeAllowed,
   isLikelyTextFilename,
   isTextMimeType,
+  saveTelegramFileToProject,
 } from "../../../src/bot/utils/file-download.js";
+
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
+});
+
+async function createTempProject(withDocuments: boolean = true): Promise<string> {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-telegram-file-"));
+  tempDirs.push(projectRoot);
+
+  if (withDocuments) {
+    await fs.mkdir(path.join(projectRoot, "documents"), { recursive: true });
+  }
+
+  return projectRoot;
+}
 
 describe("bot/utils/file-download", () => {
   describe("toDataUri", () => {
@@ -29,6 +52,69 @@ describe("bot/utils/file-download", () => {
       const dataUri = toDataUri(buffer, "application/octet-stream");
 
       expect(dataUri).toBe("data:application/octet-stream;base64,");
+    });
+  });
+
+  describe("saveTelegramFileToProject", () => {
+    it("stores files under documents/inbox when the project has documents", async () => {
+      const projectRoot = await createTempProject();
+      const savedFile = await saveTelegramFileToProject({
+        projectRoot,
+        buffer: Buffer.from("image bytes"),
+        originalFilename: "photo from telegram.jpg",
+        fallbackFilename: "photo.jpg",
+        mimeType: "image/jpeg",
+        createdAt: new Date("2026-03-22T19:22:35.000Z"),
+      });
+
+      expect(savedFile.relativePath).toMatch(
+        /^documents\/inbox\/2026\/03\/22\/20260322T192235Z-[a-f0-9]{8}-photo from telegram\.jpg$/,
+      );
+      await expect(fs.readFile(savedFile.absolutePath, "utf-8")).resolves.toBe("image bytes");
+    });
+
+    it("falls back outside documents when the project has no documents directory", async () => {
+      const projectRoot = await createTempProject(false);
+      const savedFile = await saveTelegramFileToProject({
+        projectRoot,
+        buffer: Buffer.from("pdf bytes"),
+        originalFilename: "../../report.pdf",
+        fallbackFilename: "file.pdf",
+        mimeType: "application/pdf",
+        createdAt: new Date("2026-03-22T19:22:35.000Z"),
+      });
+
+      expect(savedFile.relativePath).toMatch(
+        /^\.telegram-files\/incoming\/2026\/03\/22\/20260322T192235Z-[a-f0-9]{8}-report\.pdf$/,
+      );
+      await expect(fs.readFile(savedFile.absolutePath, "utf-8")).resolves.toBe("pdf bytes");
+    });
+  });
+
+  describe("attachment prompts", () => {
+    it("adds saved path context before the caption", () => {
+      expect(buildTelegramAttachmentPrompt("Describe this photo", "documents/inbox/2026/03/22/photo.jpg")).toBe(
+        "Telegram file saved locally at `documents/inbox/2026/03/22/photo.jpg`. Use this local path if you need the original file.\n\nDescribe this photo",
+      );
+    });
+
+    it("uses fallback text when there is no caption", () => {
+      expect(buildTelegramAttachmentPrompt("", undefined, "See attached file.")).toBe(
+        "See attached file.",
+      );
+    });
+
+    it("embeds saved path into text file prompts", () => {
+      expect(
+        buildTextFilePrompt(
+          "notes.txt",
+          "hello world",
+          "Summarize it",
+          "documents/inbox/2026/03/22/notes.txt",
+        ),
+      ).toBe(
+        "Telegram file saved locally at `documents/inbox/2026/03/22/notes.txt`. Use this local path if you need the original file.\n\n--- Content of notes.txt ---\nhello world\n--- End of file ---\n\nSummarize it",
+      );
     });
   });
 

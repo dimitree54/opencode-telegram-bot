@@ -23,6 +23,7 @@ function createDocumentContext(overrides: Partial<Context["message"]> = {}): {
         file_size: 1024,
       },
       caption: "",
+      date: 1_711_134_555,
       ...overrides,
     },
     reply: replyMock,
@@ -41,6 +42,7 @@ function createDocumentDeps(overrides: Partial<DocumentHandlerDeps> = {}): {
   deps: DocumentHandlerDeps;
   processPromptMock: ReturnType<typeof vi.fn>;
   downloadMock: ReturnType<typeof vi.fn>;
+  saveFileMock: ReturnType<typeof vi.fn>;
   getCapabilitiesMock: ReturnType<typeof vi.fn>;
   getStoredModelMock: ReturnType<typeof vi.fn>;
 } {
@@ -48,6 +50,11 @@ function createDocumentDeps(overrides: Partial<DocumentHandlerDeps> = {}): {
   const downloadMock = vi.fn().mockResolvedValue({
     buffer: Buffer.from("file content here"),
     filePath: "documents/test.txt",
+  });
+  const saveFileMock = vi.fn().mockResolvedValue({
+    absolutePath: "/workspace/documents/inbox/2026/03/22/test.txt",
+    relativePath: "documents/inbox/2026/03/22/test.txt",
+    filename: "test.txt",
   });
   const getCapabilitiesMock = vi.fn().mockResolvedValue({
     input: { pdf: true, image: true },
@@ -61,13 +68,22 @@ function createDocumentDeps(overrides: Partial<DocumentHandlerDeps> = {}): {
     bot: {} as DocumentHandlerDeps["bot"],
     ensureEventSubscription: vi.fn().mockResolvedValue(undefined),
     downloadFile: downloadMock,
+    saveFile: saveFileMock,
+    getProjectRoot: vi.fn().mockReturnValue("/workspace"),
     getModelCapabilities: getCapabilitiesMock,
     getStoredModel: getStoredModelMock,
     processPrompt: processPromptMock,
     ...overrides,
   };
 
-  return { deps, processPromptMock, downloadMock, getCapabilitiesMock, getStoredModelMock };
+  return {
+    deps,
+    processPromptMock,
+    downloadMock,
+    saveFileMock,
+    getCapabilitiesMock,
+    getStoredModelMock,
+  };
 }
 
 describe("bot/handlers/document", () => {
@@ -78,15 +94,22 @@ describe("bot/handlers/document", () => {
   describe("text files", () => {
     it("downloads and sends text file content as prompt", async () => {
       const { ctx, replyMock } = createDocumentContext();
-      const { deps, processPromptMock, downloadMock } = createDocumentDeps();
+      const { deps, processPromptMock, downloadMock, saveFileMock } = createDocumentDeps();
 
       await handleDocumentMessage(ctx, deps);
 
       expect(replyMock).toHaveBeenCalledWith(t("bot.file_downloading"));
       expect(downloadMock).toHaveBeenCalled();
+      expect(saveFileMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectRoot: "/workspace",
+          originalFilename: "test.txt",
+          fallbackFilename: "test.txt",
+        }),
+      );
       expect(processPromptMock).toHaveBeenCalledWith(
         ctx,
-        "--- Content of test.txt ---\nfile content here\n--- End of file ---\n\n",
+        "Telegram file saved locally at `documents/inbox/2026/03/22/test.txt`. Use this local path if you need the original file.\n\n--- Content of test.txt ---\nfile content here\n--- End of file ---",
         deps,
       );
     });
@@ -215,7 +238,7 @@ describe("bot/handlers/document", () => {
       expect(downloadMock).toHaveBeenCalled();
       expect(processPromptMock).toHaveBeenCalledWith(
         ctx,
-        "",
+        "Telegram file saved locally at `documents/inbox/2026/03/22/test.txt`. Use this local path if you need the original file.",
         deps,
         expect.arrayContaining([
           expect.objectContaining({ type: "file", mime: "application/pdf" }),
@@ -264,7 +287,11 @@ describe("bot/handlers/document", () => {
 
       await handleDocumentMessage(ctx, deps);
 
-      expect(processPromptMock).toHaveBeenCalledWith(ctx, "Summarize this document", deps);
+      expect(processPromptMock).toHaveBeenCalledWith(
+        ctx,
+        "Telegram file saved locally at `documents/inbox/2026/03/22/test.txt`. Use this local path if you need the original file.\n\nSummarize this document",
+        deps,
+      );
     });
   });
 
@@ -279,12 +306,13 @@ describe("bot/handlers/document", () => {
           file_size: 5000,
         },
       });
-      const { deps, processPromptMock, downloadMock } = createDocumentDeps();
+      const { deps, processPromptMock, downloadMock, saveFileMock } = createDocumentDeps();
 
       await handleDocumentMessage(ctx, deps);
 
       expect(replyMock).toHaveBeenCalledWith(t("bot.model_no_attachment"));
-      expect(downloadMock).not.toHaveBeenCalled();
+      expect(downloadMock).toHaveBeenCalled();
+      expect(saveFileMock).toHaveBeenCalled();
       expect(processPromptMock).not.toHaveBeenCalled();
     });
 
@@ -306,7 +334,7 @@ describe("bot/handlers/document", () => {
       expect(downloadMock).toHaveBeenCalled();
       expect(processPromptMock).toHaveBeenCalledWith(
         ctx,
-        "",
+        "Telegram file saved locally at `documents/inbox/2026/03/22/test.txt`. Use this local path if you need the original file.",
         deps,
         expect.arrayContaining([
           expect.objectContaining({ type: "file", mime: "image/png", filename: "photo.png" }),
@@ -337,10 +365,36 @@ describe("bot/handlers/document", () => {
       expect(downloadMock).toHaveBeenCalled();
       expect(processPromptMock).toHaveBeenCalledWith(
         ctx,
-        "",
+        "Telegram file saved locally at `documents/inbox/2026/03/22/test.txt`. Use this local path if you need the original file.",
         deps,
         expect.arrayContaining([
           expect.objectContaining({ type: "file", mime: "application/zip", filename: "bundle.zip" }),
+        ]),
+      );
+    });
+
+    it("still sends attachment when local save fails", async () => {
+      const { ctx } = createDocumentContext({
+        document: {
+          file_id: "image-file-id",
+          file_unique_id: "image-unique-id",
+          file_name: "photo.png",
+          mime_type: "image/png",
+          file_size: 5000,
+        },
+      });
+      const { deps, processPromptMock } = createDocumentDeps({
+        saveFile: vi.fn().mockRejectedValue(new Error("disk full")),
+      });
+
+      await handleDocumentMessage(ctx, deps);
+
+      expect(processPromptMock).toHaveBeenCalledWith(
+        ctx,
+        "See attached file.",
+        deps,
+        expect.arrayContaining([
+          expect.objectContaining({ type: "file", mime: "image/png", filename: "photo.png" }),
         ]),
       );
     });
